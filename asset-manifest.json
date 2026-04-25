@@ -1,13 +1,13 @@
 {
   "files": {
     "main.css": "/camcard-web/static/css/main.cf890fdb.css",
-    "main.js": "/camcard-web/static/js/main.4a1231da.js",
+    "main.js": "/camcard-web/static/js/main.dc860f2a.js",
     "index.html": "/camcard-web/index.html",
     "main.cf890fdb.css.map": "/camcard-web/static/css/main.cf890fdb.css.map",
-    "main.4a1231da.js.map": "/camcard-web/static/js/main.4a1231da.js.map"
+    "main.dc860f2a.js.map": "/camcard-web/static/js/main.dc860f2a.js.map"
   },
   "entrypoints": [
     "static/css/main.cf890fdb.css",
-    "static/js/main.4a1231da.js"
+    "static/js/main.dc860f2a.js"
   ]
 }
