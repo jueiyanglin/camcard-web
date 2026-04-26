@@ -53,7 +53,7 @@ const isCanvasEnv = typeof window !== 'undefined' && window.__firebase_config;
 // 避免部分 API Key 的權限無法使用最新模型，系統將自動依序嘗試可用的 AI 視覺模型。
 const MODELS_TO_TRY = isCanvasEnv
  ? ["gemini-2.5-flash-preview-09-2025"]
- : ["gemini-1.5-flash", "gemini-2.5-flash",  "gemini-2.5-flash-latest"];
+ : ["gemini-2.5-flash",  "gemini-3.1-flash"];
 
 
 const INDUSTRIES = ['全部', '中鋼集團', '中鋼客戶', '型鋼客戶', '鋼鐵同業', '協力商', '供應商', '政府及地方', '休閒娛樂', '金融', '其它'];
