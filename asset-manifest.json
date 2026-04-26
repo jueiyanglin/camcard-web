@@ -1,11 +1,11 @@
 {
   "files": {
     "main.css": "/camcard-web/static/css/main.6aa5b1ba.css",
-    "main.js": "/camcard-web/static/js/main.6d522178.js",
+    "main.js": "/camcard-web/static/js/main.dea53916.js",
     "index.html": "/camcard-web/index.html"
   },
   "entrypoints": [
     "static/css/main.6aa5b1ba.css",
-    "static/js/main.6d522178.js"
+    "static/js/main.dea53916.js"
   ]
 }
