@@ -34,7 +34,7 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 const storage = getStorage(app);
-
+const USE_BACKEND_API = true;
 
 // 確保即使 window 存在，但 __app_id 未定義時，也能正確套用 fallback
 const rawAppId = (typeof window !== 'undefined' && window.__app_id) ? window.__app_id : 'camcard-web';
