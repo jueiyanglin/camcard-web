@@ -344,7 +344,7 @@ export default function App() {
             <div className="absolute inset-0 bg-white/20 rounded-[2rem] blur-xl -z-10 animate-pulse"></div>
             
             {/* 💡 如果您想使用自訂圖片，請將下方的 <ScanFace .../> 註解掉，並取消下方 <img .../> 的註解 */}
-            {*<ScanFace className="w-20 h-20 text-white" />*}
+            {/*<ScanFace className="w-20 h-20 text-white" />*/}
             <img src="/duck.png" alt="Logo" className="w-20 h-20 object-contain" /> 
             
           </div>
