@@ -59,18 +59,20 @@ const INDUSTRY_COLORS = {
 };
 
 const API_ERROR_MESSAGES = {
-  400: "【請求無效】可能 API 金鑰不正確，或格式錯誤。",
+  400: "【請求無效】可能 API 金鑰不正確，或圖片格式錯誤。",
   403: "【權限拒絕】API 金鑰無效或受限。",
   404: "【模型不存在】指定的 AI 模型名稱錯誤。",
-  429: "【頻率受限】請求過於頻繁，請稍候 1 分鐘。",
+  429: "【頻率受限】請求過於頻繁，請稍候 1 分鐘再試。",
   500: "【伺服器錯誤】系統異常，請稍後再試。",
-  'UNRECOGNIZED': "【辨識失敗】無法從圖片提取有效資訊。",
+  503: "【系統繁忙】AI 模型目前全球大塞車，請稍等幾分鐘後再試。",
+  'UNRECOGNIZED': "【辨識失敗】無法從圖片提取有效資訊，請確保圖片清晰。",
   'UNKNOWN': "【未知錯誤】發生了未預期的通訊問題。"
 };
 
 const getDetailedError = (status, serverMsg = "") => {
   if (status === null) return API_ERROR_MESSAGES[serverMsg] || API_ERROR_MESSAGES['UNKNOWN'];
   const baseMsg = API_ERROR_MESSAGES[status] || API_ERROR_MESSAGES['UNKNOWN'];
+  if (status === 503) return baseMsg;
   return `${baseMsg} (代碼: ${status || '無'} ${serverMsg})`;
 };
 
@@ -105,7 +107,7 @@ async function callGeminiWithRetry(payload, retries = 3) {
   for (const model of MODELS_TO_TRY) {
     for (let i = 0; i < retries; i++) {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 20000);
+      const timeoutId = setTimeout(() => controller.abort(), 25000); 
       try {
         const fullPayload = { ...payload, model: `models/${model}`, targetModel: model };
         const response = await fetch(`/api/gemini`, {
@@ -115,6 +117,7 @@ async function callGeminiWithRetry(payload, retries = 3) {
           signal: controller.signal
         });
         clearTimeout(timeoutId);
+        
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({}));
           const error = new Error(errorData.error?.message || "網路請求失敗");
@@ -125,12 +128,13 @@ async function callGeminiWithRetry(payload, retries = 3) {
       } catch (err) {
         clearTimeout(timeoutId);
         lastError = err;
-        if (i === retries - 1) throw err;
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        if (i === retries - 1) break; 
+        const delay = 1500 * (i + 1); 
+        await new Promise(resolve => setTimeout(resolve, delay));
       }
     }
   }
-  throw lastError;
+  throw lastError; 
 }
 
 function cleanJsonResponse(text) {
@@ -465,15 +469,29 @@ function ContactModal({ contact, onClose, onSave, setDbError, user, appId, stora
       
       let uploadedPhotoUrl = formData.photoUrl;
       if (user && storage) {
-        setOcrStatus('正在存檔圖片...');
-        const imageRef = ref(storage, `artifacts/${appId}/users/${user.uid}/images/${Date.now()}.jpg`);
-        await uploadString(imageRef, base64Data, 'base64');
-        uploadedPhotoUrl = await getDownloadURL(imageRef);
+        setOcrStatus('正在存檔圖片 (超時將自動略過)...');
+        try {
+          const imageRef = ref(storage, `artifacts/${appId}/users/${user.uid}/images/${Date.now()}.jpg`);
+          // 【超時防護機制】最多等 5 秒，如果 Storage 卡住就直接觸發 catch 跳出，不影響後續流程
+          await Promise.race([
+            uploadString(imageRef, base64Data, 'base64'),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('儲存圖片超時，跳過存檔程序')), 5000))
+          ]);
+          uploadedPhotoUrl = await getDownloadURL(imageRef);
+        } catch (storageErr) {
+          console.warn('圖片上傳失敗或超時，已保留文字並略過圖片:', storageErr.message);
+          // 若圖片上傳失敗，也不要阻擋 AI 辨識出的文字填入
+        }
       }
       setFormData(prev => ({ ...prev, ...data, photoUrl: uploadedPhotoUrl }));
       setOcrStatus('辨識成功！');
-    } catch (err) { setDbError(getDetailedError(err.status, err.message)); }
-    finally { setIsOcrLoading(false); setOcrStatus(''); if (fileInputRef.current) fileInputRef.current.value = ''; }
+    } catch (err) { 
+      setDbError(getDetailedError(err.status, err.message)); 
+    } finally { 
+      setIsOcrLoading(false); 
+      setOcrStatus(''); 
+      if (fileInputRef.current) fileInputRef.current.value = ''; 
+    }
   };
 
   return (
