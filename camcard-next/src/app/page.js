@@ -1,5 +1,5 @@
 "use client";
-// 這告訴 Next.js 這是一個前端互動元件
+// 告訴 Next.js 這是一個前端互動元件
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
@@ -9,13 +9,13 @@ import {
   Database, Layers, Download, Upload, Image as ImageIcon, LogOut, FileText, Menu
 } from 'lucide-react';
 
-// --- Firebase 雲端資料庫初始化 ---
-// 【修正重點 1】引入 getApps 與 getApp，防止 Next.js SSR 重複初始化導致網頁崩潰
+// --- Firebase 雲端資料庫 (安全初始化) ---
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
 import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
 import { getStorage, ref, uploadString, getDownloadURL } from 'firebase/storage';
 
+// 1. 設定預設的 Firebase Config
 const fallbackConfig = {
   apiKey: "AIzaSyANFxwo3cqAJmuxz59wvTOiFCZZFobFmzk",
   authDomain: "camcard-web.firebaseapp.com",
@@ -25,39 +25,37 @@ const fallbackConfig = {
   appId: "1:894143261550:web:a9f86cb9de16fae7b86f7f"
 };
 
-const firebaseConfig = (typeof window !== 'undefined' && window.__firebase_config)
-  ? JSON.parse(window.__firebase_config)
-  : fallbackConfig;
+// 2. 獲取 Config (支援 SSR 與 Client)
+const getFirebaseConfig = () => {
+  if (typeof window !== 'undefined' && window.__firebase_config) {
+    try { return JSON.parse(window.__firebase_config); } catch (e) { return fallbackConfig; }
+  }
+  return fallbackConfig;
+};
 
-// 【修正重點 2】安全初始化 Firebase (若已存在則取用，不存在才初始化)
-const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
+// 3. 無條件但安全地初始化 Firebase (解決 Vercel 崩潰的關鍵)
+const app = getApps().length === 0 ? initializeApp(getFirebaseConfig()) : getApp();
 const auth = getAuth(app);
 const db = getFirestore(app);
 const storage = getStorage(app);
-const USE_BACKEND_API = true;
 
-const rawAppId = (typeof window !== 'undefined' && window.__app_id) ? window.__app_id : 'camcard-web';
-const appId = rawAppId.replace(/\//g, '_');
+// 4. 安全獲取 AppId 與 Models
+const appId = typeof window !== 'undefined' && window.__app_id 
+  ? window.__app_id.replace(/\//g, '_') 
+  : 'camcard-web';
 
-const isCanvasEnv = typeof window !== 'undefined' && window.__firebase_config;
-
-const MODELS_TO_TRY = isCanvasEnv
+const MODELS_TO_TRY = typeof window !== 'undefined' && window.__firebase_config
   ? ["gemini-2.5-flash-preview-09-2025"]
   : ["gemini-2.5-flash", "gemini-1.5-flash"];
 
 const INDUSTRIES = ['全部', '中鋼集團', '中鋼客戶', '型鋼客戶', '鋼鐵同業', '協力商', '供應商', '政府及地方', '休閒娛樂', '金融', '其它'];
 
 const INDUSTRY_COLORS = {
-  '中鋼集團': 'from-blue-700 to-blue-900',
-  '中鋼客戶': 'from-sky-700 to-sky-900',
-  '型鋼客戶': 'from-cyan-700 to-cyan-900',
-  '鋼鐵同業': 'from-zinc-700 to-zinc-900',
-  '協力商': 'from-emerald-700 to-emerald-900',
-  '供應商': 'from-teal-700 to-teal-900',
-  '政府及地方': 'from-amber-700 to-amber-900',
-  '休閒娛樂': 'from-rose-700 to-rose-900',
-  '金融': 'from-purple-700 to-purple-900',
-  '其它': 'from-indigo-700 to-indigo-900'
+  '中鋼集團': 'from-blue-700 to-blue-900', '中鋼客戶': 'from-sky-700 to-sky-900',
+  '型鋼客戶': 'from-cyan-700 to-cyan-900', '鋼鐵同業': 'from-zinc-700 to-zinc-900',
+  '協力商': 'from-emerald-700 to-emerald-900', '供應商': 'from-teal-700 to-teal-900',
+  '政府及地方': 'from-amber-700 to-amber-900', '休閒娛樂': 'from-rose-700 to-rose-900',
+  '金融': 'from-purple-700 to-purple-900', '其它': 'from-indigo-700 to-indigo-900'
 };
 
 const API_ERROR_MESSAGES = {
@@ -155,26 +153,46 @@ export default function App() {
   const [isBatchModalOpen, setIsBatchModalOpen] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   
-  const importCsvRef = useRef(null);
-
   const showNotification = (msg) => {
     setNotification(msg);
     setTimeout(() => setNotification(null), 3000);
   };
 
+  const handleGoogleLogin = async () => {
+    if (!auth) return;
+    try {
+      const provider = new GoogleAuthProvider();
+      await signInWithPopup(auth, provider);
+      showNotification("Google 登入成功！");
+    } catch (error) { setDbError(`登入失敗: ${error.message}`); }
+  };
+
+  const handleLogout = async () => {
+    if (!auth) return;
+    try {
+      await signOut(auth);
+      await signInAnonymously(auth);
+      showNotification("已登出，目前為訪客模式");
+    } catch (error) { setDbError(`登出失敗: ${error.message}`); }
+  };
+
   useEffect(() => {
+    if (!auth) {
+      setIsLoadingDB(false);
+      return;
+    }
     const unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser) {
         setUser(currentUser);
       } else {
-        signInAnonymously(auth).catch(() => setDbError("認證服務異常"));
+        signInAnonymously(auth).catch(() => setDbError("認證服務暫時無法使用，請檢查網路"));
       }
     });
     return () => unsubscribeAuth();
   }, []);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || !db) return;
     const contactsRef = collection(db, 'artifacts', appId, 'users', user.uid, 'contacts');
     const unsubscribeSnapshot = onSnapshot(contactsRef, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -199,7 +217,7 @@ export default function App() {
   }, [contacts, searchTerm, selectedIndustry]);
 
   const handleSaveContact = async (formData) => {
-    if (!user) return;
+    if (!user || !db) return;
     try {
       const contactId = editingContact?.id || String(Date.now());
       const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'contacts', contactId);
@@ -211,14 +229,13 @@ export default function App() {
   };
 
   const handleDelete = async (id) => {
-    if (!user || !window.confirm("確定要刪除這張名片嗎？")) return;
+    if (!user || !db || !window.confirm("確定要刪除這張名片嗎？")) return;
     try {
       await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'contacts', String(id)));
       showNotification("名片已刪除");
     } catch (error) { setDbError(`刪除失敗: ${error.message}`); }
   };
 
-  // --- CSV 匯出 ---
   const exportToCSV = () => {
     if (contacts.length === 0) return showNotification("目前沒有資料");
     const headers = [
@@ -242,10 +259,9 @@ export default function App() {
     showNotification("匯出成功！");
   };
 
-  // --- CSV 匯入 ---
   const handleCSVImport = (e) => {
     const file = e.target.files[0];
-    if (!file || !user) return;
+    if (!file || !user || !db) return;
     const reader = new FileReader();
     reader.onload = async (event) => {
       try {
@@ -286,7 +302,7 @@ export default function App() {
   };
 
   const handleBatchScan = async (file, defaultIndustry) => {
-    if (!file || !user) return;
+    if (!file || !user || !db) return;
     setIsBatchScanning(true);
     setDbError(null);
     try {
@@ -342,9 +358,9 @@ export default function App() {
             <span className="truncate font-medium">{user?.email || '訪客模式'}</span>
           </div>
           {user?.isAnonymous ? (
-            <button onClick={() => signInWithPopup(auth, new GoogleAuthProvider())} className="w-full py-2 bg-blue-600 text-white rounded-lg font-bold shadow-md hover:bg-blue-700">Google 登入</button>
+            <button onClick={handleGoogleLogin} className="w-full py-2 bg-blue-600 text-white rounded-lg font-bold shadow-md hover:bg-blue-700 transition-colors">Google 登入</button>
           ) : (
-            <button onClick={handleLogout} className="w-full py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-600">登出</button>
+            <button onClick={handleLogout} className="w-full py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-600 transition-colors">登出</button>
           )}
         </div>
       </aside>
