@@ -1,4 +1,5 @@
-"use client"; // 這告訴 Next.js 這是一個前端互動元件
+"use client";
+// 這告訴 Next.js 這是一個前端互動元件
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
@@ -9,7 +10,8 @@ import {
 } from 'lucide-react';
 
 // --- Firebase 雲端資料庫初始化 ---
-import { initializeApp } from 'firebase/app';
+// 【修正重點 1】引入 getApps 與 getApp，防止 Next.js SSR 重複初始化導致網頁崩潰
+import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
 import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
 import { getStorage, ref, uploadString, getDownloadURL } from 'firebase/storage';
@@ -27,7 +29,8 @@ const firebaseConfig = (typeof window !== 'undefined' && window.__firebase_confi
   ? JSON.parse(window.__firebase_config)
   : fallbackConfig;
 
-const app = initializeApp(firebaseConfig);
+// 【修正重點 2】安全初始化 Firebase (若已存在則取用，不存在才初始化)
+const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 const auth = getAuth(app);
 const db = getFirestore(app);
 const storage = getStorage(app);
