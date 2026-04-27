@@ -343,9 +343,12 @@ export default function App() {
           <div className="bg-gradient-to-br from-blue-600 to-blue-800 p-6 rounded-[2rem] shadow-2xl mb-8 relative">
             <div className="absolute inset-0 bg-white/20 rounded-[2rem] blur-xl -z-10 animate-pulse"></div>
             
-            {/* 💡 如果您想使用自訂圖片，請將下方的 <ScanFace .../> 註解掉，並取消下方 <img .../> 的註解 */}
-            {/*<ScanFace className="w-20 h-20 text-white" />*/}
-            <img src="/duck.png" alt="Logo" className="w-20 h-20 object-contain" /> 
+            {/* 可達鴨 Logo */}
+            <img 
+              src="/logo.png" 
+              alt="Psyduck Logo" 
+              className="w-20 h-20 object-contain drop-shadow-xl transform hover:scale-110 transition-transform" 
+            />
             
           </div>
           
@@ -370,7 +373,13 @@ export default function App() {
       <aside className={`fixed md:relative z-[300] inset-y-0 left-0 w-64 bg-slate-900 text-slate-300 flex flex-col shadow-2xl md:shadow-xl transform transition-transform duration-300 ease-in-out ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0`}>
         <div className="p-6 flex items-center justify-between border-b border-slate-800">
           <div className="flex items-center gap-3">
-            <div className="bg-blue-600 p-2 rounded-lg shadow-lg"><ScanFace className="text-white w-6 h-6" /></div>
+            <div className="bg-blue-600 p-2 rounded-lg shadow-lg">
+              <img 
+                src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/54.png" 
+                alt="Psyduck Logo" 
+                className="w-6 h-6 object-contain" 
+              />
+            </div>
             <h1 className="text-xl font-bold text-white tracking-wide">名片王 Pro</h1>
           </div>
           <button onClick={() => setIsSidebarOpen(false)} className="md:hidden p-1 text-slate-400 hover:text-white rounded-md transition-colors">
