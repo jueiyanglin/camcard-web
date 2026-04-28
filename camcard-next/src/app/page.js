@@ -123,12 +123,23 @@ async function callGeminiWithRetry(payload, retries = 3) {
           const errorData = await response.json().catch(() => ({}));
           const error = new Error(errorData.error?.message || "網路請求失敗");
           error.status = response.status;
+          
+          // 🚀 【關鍵修正】：如果是 4xx 錯誤（額度耗盡、參數錯誤、權限拒絕），重試也沒用，直接拋出致命錯誤
+          if ([400, 403, 404, 429].includes(response.status)) {
+            error.isFatal = true; 
+          }
           throw error;
         }
         return await response.json();
       } catch (err) {
         clearTimeout(timeoutId);
         lastError = err;
+        
+        // 🚀 【關鍵修正】：如果是致命錯誤（如 429 額度耗盡），直接中斷迴圈，不再浪費重試次數
+        if (err.isFatal) {
+          throw err;
+        }
+
         if (i === retries - 1) break; 
         const delay = 1500 * (i + 1); 
         await new Promise(resolve => setTimeout(resolve, delay));
