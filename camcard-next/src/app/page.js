@@ -135,41 +135,59 @@ const compressImage = (file) => {
   });
 };
 
-// 🌟 優化：阻斷盲目重試引發的「雪崩效應」
+
+
 async function callGeminiWithRetry(payload, retries = 3) {
   let lastError;
-  const model = "gemini-2.5-flash-preview-09-2025"; 
 
   for (let i = 0; i < retries; i++) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 20000); 
+
     try {
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
+      // ✅ 完美隱藏：直接呼叫我們自己的 Next.js 後端 API，不帶任何金鑰！
+      const response = await fetch(`/api/gemini`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(payload),
+        signal: controller.signal
       });
-      
+
+      clearTimeout(timeoutId);
+      const data = await response.json();
+
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        const error = new Error(errorData.error?.message || "網路請求失敗");
+        const error = new Error(data.error?.message || "網路請求失敗");
         error.status = response.status;
-        
-        // 關鍵修正：4xx 錯誤直接拋出，不再無效重試
-        if ([400, 403, 404, 429].includes(response.status)) {
-          error.isFatal = true; 
-        }
         throw error;
       }
-      return await response.json();
+
+      return data; // 成功取得後端轉交的回傳結果
+
     } catch (err) {
+      clearTimeout(timeoutId);
       lastError = err;
-      if (err.isFatal) throw err; // 致命錯誤立刻中斷
-      if (i === retries - 1) break; 
-      const delay = 1500 * (i + 1); 
+
+      if (err.name === 'AbortError') {
+        err = new Error("伺服器無回應 (逾時)");
+        err.status = 504;
+      }
+
+      // 如果是 400 或 403 這種不可恢復的錯誤，直接跳出重試
+      if (err.status === 400 || err.status === 403 || err.status === 404) {
+        break; 
+      }
+
+      const delay = Math.pow(2, i) * 1000;
       await new Promise(resolve => setTimeout(resolve, delay));
     }
   }
   throw lastError; 
 }
+
+
+
+
 
 function cleanJsonResponse(text) {
   if (!text) return "{}";
