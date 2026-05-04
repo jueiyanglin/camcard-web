@@ -1,5 +1,4 @@
 "use client";
-// 告訴 Next.js 這是一個前端互動元件
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
@@ -42,7 +41,7 @@ const appId = typeof window !== 'undefined' && window.__app_id
   : 'camcard-web';
 
 // 環境提供的 API Key，供預覽測試使用
-
+const apiKey = ""; 
 
 const INDUSTRIES = ['全部', '中鋼集團', '中鋼客戶', '型鋼客戶', '鋼鐵同業', '協力商', '供應商', '政府及地方', '國外廠商', '休閒娛樂', '金融', '其它'];
 
@@ -424,7 +423,11 @@ export default function App() {
         <div className="z-10 flex flex-col items-center animate-in fade-in duration-700">
           <div className="bg-gradient-to-br from-blue-600 to-blue-800 p-6 rounded-[2rem] shadow-2xl mb-8 relative">
             <div className="absolute inset-0 bg-white/20 rounded-[2rem] blur-xl -z-10 animate-pulse"></div>
-            <Users className="w-16 h-16 text-white drop-shadow-xl" />
+            <img 
+              src="/logo.png" 
+              alt="App Logo" 
+              className="w-20 h-20 object-contain drop-shadow-xl transform hover:scale-110 transition-transform" 
+            />
           </div>
           <h1 className="text-4xl font-black text-white tracking-widest mb-3">名片王 <span className="text-blue-400">Pro</span></h1>
           <p className="text-slate-400 text-sm font-medium tracking-widest mb-16 uppercase">數位人脈管理系統</p>
@@ -447,7 +450,11 @@ export default function App() {
         <div className="p-6 flex items-center justify-between border-b border-slate-800">
           <div className="flex items-center gap-3">
             <div className="bg-blue-600 p-2 rounded-lg shadow-lg">
-              <Building2 className="w-6 h-6 text-white" />
+              <img 
+                src="/logo.png" 
+                alt="App Logo" 
+                className="w-6 h-6 object-contain" 
+              />
             </div>
             <h1 className="text-xl font-bold text-white tracking-wide">名片王 Pro</h1>
           </div>
