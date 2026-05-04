@@ -1,3 +1,6 @@
+"use client";
+// 告訴 Next.js 這是一個前端互動元件
+
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   Search, Plus, Building2, Phone, Mail, Briefcase,
@@ -77,11 +80,27 @@ const getDetailedError = (status, serverMsg = "") => {
   return `${baseMsg} (代碼: ${status || '無'} ${serverMsg})`;
 };
 
-// 動態載入 XLSX 套件，避免編譯環境缺少依賴
+// 🌟 安全的動態載入 XLSX 套件，相容 Vercel 編譯環境
 const loadXLSX = async () => {
-  if (window.XLSX) return window.XLSX;
+  // 如果已經在全域變數中，直接回傳
+  if (typeof window !== 'undefined' && window.XLSX) return window.XLSX;
+  
   return new Promise((resolve, reject) => {
+    // 確保在瀏覽器環境執行
+    if (typeof document === 'undefined') {
+      return reject(new Error("XLSX can only be loaded in a browser environment"));
+    }
+    
+    // 檢查是否已經有 script 正在載入
+    const existingScript = document.getElementById('xlsx-script');
+    if (existingScript) {
+      existingScript.addEventListener('load', () => resolve(window.XLSX));
+      existingScript.addEventListener('error', () => reject(new Error("載入 Excel 處理套件失敗")));
+      return;
+    }
+
     const script = document.createElement('script');
+    script.id = 'xlsx-script';
     script.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
     script.onload = () => resolve(window.XLSX);
     script.onerror = () => reject(new Error("載入 Excel 處理套件失敗"));
@@ -279,6 +298,11 @@ export default function App() {
     try {
       showNotification("正在準備匯出...");
       const XLSX = await loadXLSX();
+      
+      if (!XLSX) {
+          throw new Error("無法載入 Excel 處理模組，請檢查網路連線。");
+      }
+
       const headers = [
         '姓名', '公司', '職稱', '電話', '手機', '公司地址', '電子信箱', 
         '公司2名稱', '公司2職稱', '公司2電話', '公司2手機', '公司2地址', '公司2電子信箱', 
@@ -310,6 +334,11 @@ export default function App() {
       try {
         setIsLoadingDB(true);
         const XLSX = await loadXLSX();
+
+        if (!XLSX) {
+            throw new Error("無法載入 Excel 處理模組，請檢查網路連線。");
+        }
+
         const data = new Uint8Array(event.target.result);
         const workbook = XLSX.read(data, { type: 'array' });
         const firstSheetName = workbook.SheetNames[0];
