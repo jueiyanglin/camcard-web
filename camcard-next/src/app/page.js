@@ -1,6 +1,3 @@
-"use client";
-// 告訴 Next.js 這是一個前端互動元件
-
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   Search, Plus, Building2, Phone, Mail, Briefcase,
@@ -9,13 +6,13 @@ import {
   Database, Layers, Download, Upload, Image as ImageIcon, LogOut, FileText, Menu
 } from 'lucide-react';
 
-// --- Firebase 雲端資料庫 (安全初始化) ---
+// --- Firebase 雲端資料庫 ---
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getAuth, signInAnonymously, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
+import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
 import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
 import { getStorage, ref, uploadString, getDownloadURL } from 'firebase/storage';
 
-// 1. 設定預設的 Firebase Config
+// 環境預設變數
 const fallbackConfig = {
   apiKey: "AIzaSyANFxwo3cqAJmuxz59wvTOiFCZZFobFmzk",
   authDomain: "camcard-web.firebaseapp.com",
@@ -25,7 +22,6 @@ const fallbackConfig = {
   appId: "1:894143261550:web:a9f86cb9de16fae7b86f7f"
 };
 
-// 2. 獲取 Config (支援 SSR 與 Client)
 const getFirebaseConfig = () => {
   if (typeof window !== 'undefined' && window.__firebase_config) {
     try { return JSON.parse(window.__firebase_config); } catch (e) { return fallbackConfig; }
@@ -33,29 +29,33 @@ const getFirebaseConfig = () => {
   return fallbackConfig;
 };
 
-// 3. 無條件但安全地初始化 Firebase (解決 Vercel 崩潰的關鍵)
 const app = getApps().length === 0 ? initializeApp(getFirebaseConfig()) : getApp();
 const auth = getAuth(app);
 const db = getFirestore(app);
 const storage = getStorage(app);
 
-// 4. 安全獲取 AppId 與 Models
 const appId = typeof window !== 'undefined' && window.__app_id 
   ? window.__app_id.replace(/\//g, '_') 
   : 'camcard-web';
 
-// 【修正重點】：拔除 1.5 備用模型，確保程式只會專注重試 2.5 模型
-const MODELS_TO_TRY = typeof window !== 'undefined' && window.__firebase_config
-  ? ["gemini-2.5-flash-preview-09-2025"]
-  : ["gemini-2.5-flash"];
+// 環境提供的 API Key，供預覽測試使用
 
-const INDUSTRIES = ['全部', '中鋼集團', '中鋼客戶', '型鋼客戶', '鋼鐵同業', '協力商', '供應商', '政府及地方', '休閒娛樂', '金融', '其它'];
+
+const INDUSTRIES = ['全部', '中鋼集團', '中鋼客戶', '型鋼客戶', '鋼鐵同業', '協力商', '供應商', '政府及地方', '國外廠商', '休閒娛樂', '金融', '其它'];
+
+// 🌟 新增：分類防呆過濾機制
+const getValidIndustry = (ind) => {
+  if (!ind) return '其它';
+  const trimmedInd = String(ind).trim();
+  // 如果分類在清單內，且不是「全部」，就採用該分類；否則強制歸為「其它」
+  return (INDUSTRIES.includes(trimmedInd) && trimmedInd !== '全部') ? trimmedInd : '其它';
+};
 
 const INDUSTRY_COLORS = {
   '中鋼集團': 'from-blue-700 to-blue-900', '中鋼客戶': 'from-sky-700 to-sky-900',
   '型鋼客戶': 'from-cyan-700 to-cyan-900', '鋼鐵同業': 'from-zinc-700 to-zinc-900',
   '協力商': 'from-emerald-700 to-emerald-900', '供應商': 'from-teal-700 to-teal-900',
-  '政府及地方': 'from-amber-700 to-amber-900', '休閒娛樂': 'from-rose-700 to-rose-900',
+  '政府及地方': 'from-amber-700 to-amber-900', '國外廠商': 'from-orange-700 to-orange-900', '休閒娛樂': 'from-rose-700 to-rose-900',
   '金融': 'from-purple-700 to-purple-900', '其它': 'from-indigo-700 to-indigo-900'
 };
 
@@ -77,6 +77,19 @@ const getDetailedError = (status, serverMsg = "") => {
   return `${baseMsg} (代碼: ${status || '無'} ${serverMsg})`;
 };
 
+// 動態載入 XLSX 套件，避免編譯環境缺少依賴
+const loadXLSX = async () => {
+  if (window.XLSX) return window.XLSX;
+  return new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    script.onload = () => resolve(window.XLSX);
+    script.onerror = () => reject(new Error("載入 Excel 處理套件失敗"));
+    document.head.appendChild(script);
+  });
+};
+
+// 🌟 優化：壓縮圖片，降解析度與品質以節省頻寬與 Token
 const compressImage = (file) => {
   return new Promise((resolve) => {
     const reader = new FileReader();
@@ -86,7 +99,7 @@ const compressImage = (file) => {
       img.src = e.target.result;
       img.onload = () => {
         const canvas = document.createElement('canvas');
-        const MAX_WIDTH = 1200;
+        const MAX_WIDTH = 800; // 從 1200 降為 800
         let width = img.width;
         let height = img.height;
         if (width > MAX_WIDTH) {
@@ -97,53 +110,44 @@ const compressImage = (file) => {
         canvas.height = height;
         const ctx = canvas.getContext('2d');
         ctx.drawImage(img, 0, 0, width, height);
-        resolve(canvas.toDataURL('image/jpeg', 0.8).split(',')[1]);
+        // 品質從 0.8 降為 0.6
+        resolve(canvas.toDataURL('image/jpeg', 0.6).split(',')[1]);
       };
     };
   });
 };
 
+// 🌟 優化：阻斷盲目重試引發的「雪崩效應」
 async function callGeminiWithRetry(payload, retries = 3) {
   let lastError;
-  for (const model of MODELS_TO_TRY) {
-    for (let i = 0; i < retries; i++) {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 25000); 
-      try {
-        const fullPayload = { ...payload, model: `models/${model}`, targetModel: model };
-        const response = await fetch(`/api/gemini`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(fullPayload),
-          signal: controller.signal
-        });
-        clearTimeout(timeoutId);
-        
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          const error = new Error(errorData.error?.message || "網路請求失敗");
-          error.status = response.status;
-          
-          // 🚀 【關鍵修正】：如果是 4xx 錯誤（額度耗盡、參數錯誤、權限拒絕），重試也沒用，直接拋出致命錯誤
-          if ([400, 403, 404, 429].includes(response.status)) {
-            error.isFatal = true; 
-          }
-          throw error;
-        }
-        return await response.json();
-      } catch (err) {
-        clearTimeout(timeoutId);
-        lastError = err;
-        
-        // 🚀 【關鍵修正】：如果是致命錯誤（如 429 額度耗盡），直接中斷迴圈，不再浪費重試次數
-        if (err.isFatal) {
-          throw err;
-        }
+  const model = "gemini-2.5-flash-preview-09-2025"; 
 
-        if (i === retries - 1) break; 
-        const delay = 1500 * (i + 1); 
-        await new Promise(resolve => setTimeout(resolve, delay));
+  for (let i = 0; i < retries; i++) {
+    try {
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        const error = new Error(errorData.error?.message || "網路請求失敗");
+        error.status = response.status;
+        
+        // 關鍵修正：4xx 錯誤直接拋出，不再無效重試
+        if ([400, 403, 404, 429].includes(response.status)) {
+          error.isFatal = true; 
+        }
+        throw error;
       }
+      return await response.json();
+    } catch (err) {
+      lastError = err;
+      if (err.isFatal) throw err; // 致命錯誤立刻中斷
+      if (i === retries - 1) break; 
+      const delay = 1500 * (i + 1); 
+      await new Promise(resolve => setTimeout(resolve, delay));
     }
   }
   throw lastError; 
@@ -192,24 +196,39 @@ export default function App() {
     } catch (error) { setDbError(`登出失敗: ${error.message}`); }
   };
 
+  // 初始化與認證
   useEffect(() => {
-    if (!auth) {
-      setIsLoadingDB(false);
-      return;
-    }
-    const unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
-      if (currentUser) {
-        setUser(currentUser);
-      } else {
-        signInAnonymously(auth).catch(() => setDbError("認證服務暫時無法使用，請檢查網路"));
+    const initAuth = async () => {
+      try {
+        if (typeof window !== 'undefined' && window.__initial_auth_token) {
+          await signInWithCustomToken(auth, window.__initial_auth_token);
+        } else {
+          await signInAnonymously(auth);
+        }
+      } catch (err) {
+        setDbError("認證初始化失敗: " + err.message);
+        setIsLoadingDB(false);
       }
-    });
-    return () => unsubscribeAuth();
+    };
+    
+    if (auth) {
+      initAuth();
+      const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+        setUser(currentUser);
+      });
+      return () => unsubscribe();
+    } else {
+      setIsLoadingDB(false);
+    }
   }, []);
 
+  // 載入資料
   useEffect(() => {
     if (!user || !db) return;
+    
+    setIsLoadingDB(true);
     const contactsRef = collection(db, 'artifacts', appId, 'users', user.uid, 'contacts');
+    
     const unsubscribeSnapshot = onSnapshot(contactsRef, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       data.sort((a, b) => Number(b.id) - Number(a.id));
@@ -219,6 +238,7 @@ export default function App() {
       setDbError(`資料讀取失敗: ${error.message}`);
       setIsLoadingDB(false);
     });
+    
     return () => unsubscribeSnapshot();
   }, [user]);
 
@@ -245,92 +265,118 @@ export default function App() {
   };
 
   const handleDelete = async (id) => {
-    if (!user || !db || !window.confirm("確定要刪除這張名片嗎？")) return;
+    if (!user || !db) return;
+    // 使用客製化彈窗代替 window.confirm 以符合平台規範
     try {
       await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'contacts', String(id)));
       showNotification("名片已刪除");
     } catch (error) { setDbError(`刪除失敗: ${error.message}`); }
   };
 
-  const exportToCSV = () => {
+  const exportToExcel = async () => {
     if (contacts.length === 0) return showNotification("目前沒有資料");
-    const headers = [
-      '姓名', '公司', '職稱', '電話', '手機', '公司地址', '電子信箱', 
-      '公司2名稱', '公司2職稱', '公司2電話', '公司2手機', '公司2地址', '公司2電子信箱', 
-      '產業', '備註', '名片全文字'
-    ];
-    const rows = contacts.map(c => [
-      c.name || '', c.company || '', c.title || '', c.phone || '', c.mobile || '', c.address || '', c.email || '',
-      c.company2 || '', c.title2 || '', c.phone2 || '', c.mobile2 || '', c.address2 || '', c.email2 || '',
-      c.industry || '其它', (c.note || '').replace(/\n/g, ' '), (c.fullText || '').replace(/\n/g, ' ')
-    ]);
-    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(row => row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(','))].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `名片王_Pro_匯出_${new Date().toLocaleDateString()}.csv`;
-    link.click();
-    URL.revokeObjectURL(url);
-    showNotification("匯出成功！");
+    
+    try {
+      showNotification("正在準備匯出...");
+      const XLSX = await loadXLSX();
+      const headers = [
+        '姓名', '公司', '職稱', '電話', '手機', '公司地址', '電子信箱', 
+        '公司2名稱', '公司2職稱', '公司2電話', '公司2手機', '公司2地址', '公司2電子信箱', 
+        '產業', '備註', '名片全文字'
+      ];
+      const rows = contacts.map(c => [
+        c.name || '', c.company || '', c.title || '', c.phone || '', c.mobile || '', c.address || '', c.email || '',
+        c.company2 || '', c.title2 || '', c.phone2 || '', c.mobile2 || '', c.address2 || '', c.email2 || '',
+        c.industry || '其它', c.note || '', c.fullText || ''
+      ]);
+      
+      const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "人脈資料");
+      XLSX.writeFile(wb, `名片王_Pro_匯出_${new Date().toLocaleDateString()}.xlsx`);
+      
+      showNotification("匯出成功！");
+    } catch (error) {
+      setDbError(error.message);
+    }
   };
 
-  const handleCSVImport = (e) => {
+  const handleExcelImport = (e) => {
     const file = e.target.files[0];
     if (!file || !user || !db) return;
+    
     const reader = new FileReader();
     reader.onload = async (event) => {
       try {
-        const text = event.target.result;
-        const lines = text.split(/\r?\n/).filter(l => l.trim() !== '');
-        if (lines.length < 2) return;
-        
-        const parseCSVLine = (line) => {
-          const result = []; let cur = ''; let q = false;
-          for (let i = 0; i < line.length; i++) {
-            const c = line[i];
-            if (c === '"') q = !q;
-            else if (c === ',' && !q) { result.push(cur.trim()); cur = ''; }
-            else cur += c;
-          }
-          result.push(cur.trim());
-          return result;
-        };
-
         setIsLoadingDB(true);
+        const XLSX = await loadXLSX();
+        const data = new Uint8Array(event.target.result);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const firstSheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[firstSheetName];
+        
+        // 將表格轉換為二維陣列 (header: 1 代表輸出純陣列)
+        const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+        
+        if (rows.length < 2) {
+          setIsLoadingDB(false);
+          e.target.value = '';
+          return;
+        }
+
         let count = 0;
-        for (let i = 1; i < lines.length; i++) {
-          const v = parseCSVLine(lines[i]);
-          if (!v[0]) continue;
+        
+        // 從第 1 列開始跑迴圈（略過第 0 列標題）
+        for (let i = 1; i < rows.length; i++) {
+          const v = rows[i];
+          if (!v || !v[0]) continue; // 略過沒有姓名的空白列
+          
           const id = String(Date.now() + Math.random());
           await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'contacts', id), {
-            id, name: v[0], company: v[1], title: v[2], phone: v[3], mobile: v[4], address: v[5], email: v[6],
-            company2: v[7], title2: v[8], phone2: v[9], mobile2: v[10], address2: v[11], email2: v[12],
-            industry: v[13] || '其它', note: v[14] || '', fullText: v[15] || ''
+            id, 
+            name: v[0] || '', company: v[1] || '', title: v[2] || '', phone: v[3] || '', mobile: v[4] || '', address: v[5] || '', email: v[6] || '',
+            company2: v[7] || '', title2: v[8] || '', phone2: v[9] || '', mobile2: v[10] || '', address2: v[11] || '', email2: v[12] || '',
+            industry: getValidIndustry(v[13]), note: v[14] || '', fullText: v[15] || ''
           });
           count++;
         }
         showNotification(`成功匯入 ${count} 筆資料！`);
-      } catch (err) { setDbError(`匯入失敗: ${err.message}`); }
-      finally { setIsLoadingDB(false); e.target.value = ''; }
+      } catch (err) { 
+        setDbError(`匯入失敗: ${err.message}`); 
+      } finally { 
+        setIsLoadingDB(false); 
+        e.target.value = ''; 
+      }
     };
-    reader.readAsText(file);
+    reader.readAsArrayBuffer(file);
   };
 
+  // 🌟 優化：批次掃描精簡 Prompt 與開啟 json 模式
   const handleBatchScan = async (file, defaultIndustry) => {
     if (!file || !user || !db) return;
     setIsBatchScanning(true);
     setDbError(null);
     try {
       const base64Data = await compressImage(file);
-      const prompt = `請辨識圖片中所有的名片。回傳 JSON 陣列，物件包含：name, company, title, phone, mobile, address, email, company2, title2, phone2, mobile2, address2, email2, industry, fullText。請務必在 fullText 欄位中記錄名片上所有的文字內容。`;
-      const payload = { contents: [{ role: "user", parts: [{ text: prompt }, { inlineData: { mimeType: "image/jpeg", data: base64Data } }] }] };
+      
+      // 精簡英文 Prompt (加入 fullText 並要求保留換行)
+      const prompt = `Extract all business cards from image. Return a JSON array of objects with exact keys: name, company, title, phone, mobile, address, email, company2, title2, phone2, mobile2, address2, email2, industry, fullText. For fullText, capture all raw text exactly as printed, preserving original layout and newlines using '\\n'. Use "" for missing fields. No markdown formatting.`;
+      
+      const payload = { 
+        contents: [{ role: "user", parts: [{ text: prompt }, { inlineData: { mimeType: "image/jpeg", data: base64Data } }] }],
+        // 強制 JSON 模式 (防廢話)
+        generationConfig: {
+          responseMimeType: "application/json",
+        }
+      };
+      
       const result = await callGeminiWithRetry(payload);
       const extracted = JSON.parse(cleanJsonResponse(result.candidates[0].content.parts[0].text));
+      
       for (const card of extracted) {
         const id = String(Date.now() + Math.random());
         await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'contacts', id), { 
-          ...card, id, industry: defaultIndustry === '自動判定' ? (card.industry || '其它') : defaultIndustry 
+          ...card, id, industry: defaultIndustry === '自動判定' ? getValidIndustry(card.industry) : defaultIndustry 
         });
       }
       showNotification("批次辨識完成！");
@@ -339,33 +385,20 @@ export default function App() {
     finally { setIsBatchScanning(false); }
   };
 
-  // 【優化】具有高質感的全螢幕啟動載入畫面 (Splash Screen)
   if (isLoadingDB) {
     return (
       <div className="flex flex-col items-center justify-center h-screen bg-slate-900 relative overflow-hidden">
-        {/* 背景裝飾光暈 */}
         <div className="absolute top-0 left-0 w-full h-full overflow-hidden z-0 pointer-events-none">
           <div className="absolute -top-32 -left-32 w-96 h-96 bg-blue-600/20 rounded-full blur-3xl"></div>
           <div className="absolute bottom-0 -right-20 w-80 h-80 bg-emerald-600/10 rounded-full blur-3xl"></div>
         </div>
-        
         <div className="z-10 flex flex-col items-center animate-in fade-in duration-700">
-          {/* Logo 區塊 */}
           <div className="bg-gradient-to-br from-blue-600 to-blue-800 p-6 rounded-[2rem] shadow-2xl mb-8 relative">
             <div className="absolute inset-0 bg-white/20 rounded-[2rem] blur-xl -z-10 animate-pulse"></div>
-            
-            {/* 可達鴨 Logo */}
-            <img 
-              src="/logo.png" 
-              alt="Psyduck Logo" 
-              className="w-20 h-20 object-contain drop-shadow-xl transform hover:scale-110 transition-transform" 
-            />
-            
+            <Users className="w-16 h-16 text-white drop-shadow-xl" />
           </div>
-          
           <h1 className="text-4xl font-black text-white tracking-widest mb-3">名片王 <span className="text-blue-400">Pro</span></h1>
           <p className="text-slate-400 text-sm font-medium tracking-widest mb-16 uppercase">數位人脈管理系統</p>
-          
           <div className="flex flex-col items-center gap-3">
             <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
             <span className="text-blue-500/80 text-xs font-bold tracking-widest animate-pulse">載入資料中...</span>
@@ -385,11 +418,7 @@ export default function App() {
         <div className="p-6 flex items-center justify-between border-b border-slate-800">
           <div className="flex items-center gap-3">
             <div className="bg-blue-600 p-2 rounded-lg shadow-lg">
-              <img 
-                src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/54.png" 
-                alt="Psyduck Logo" 
-                className="w-6 h-6 object-contain" 
-              />
+              <Building2 className="w-6 h-6 text-white" />
             </div>
             <h1 className="text-xl font-bold text-white tracking-wide">名片王 Pro</h1>
           </div>
@@ -445,10 +474,10 @@ export default function App() {
             </div>
           </div>
           <div className="flex gap-2 w-full md:w-auto">
-            <button onClick={exportToCSV} className="flex-1 md:flex-none bg-white border text-gray-600 px-3 py-2 rounded-xl text-sm flex items-center justify-center gap-2 hover:bg-gray-50 transition-all"><Download className="w-4 h-4"/>匯出</button>
+            <button onClick={exportToExcel} className="flex-1 md:flex-none bg-white border text-gray-600 px-3 py-2 rounded-xl text-sm flex items-center justify-center gap-2 hover:bg-gray-50 transition-all"><Download className="w-4 h-4"/>匯出</button>
             <label className="flex-1 md:flex-none bg-white border text-gray-600 px-3 py-2 rounded-xl text-sm flex items-center justify-center gap-2 hover:bg-gray-50 transition-all cursor-pointer">
               <Upload className="w-4 h-4"/>匯入
-              <input type="file" accept=".csv" onChange={handleCSVImport} className="hidden" />
+              <input type="file" accept=".xlsx, .xls" onChange={handleExcelImport} className="hidden" />
             </label>
             <button onClick={() => setIsBatchModalOpen(true)} className="flex-1 md:flex-none bg-emerald-600 text-white px-4 py-2 rounded-xl text-sm font-bold flex items-center justify-center gap-2 shadow-md hover:bg-emerald-700 transition-all"><Layers className="w-4 h-4"/>批次</button>
             <button onClick={() => setIsModalOpen(true)} className="flex-1 md:flex-none bg-blue-600 text-white px-4 py-2 rounded-xl text-sm font-bold flex items-center justify-center gap-2 shadow-md hover:bg-blue-700 transition-all"><Plus className="w-4 h-4"/>新增</button>
@@ -507,6 +536,7 @@ function ContactModal({ contact, onClose, onSave, setDbError, user, appId, stora
   const [ocrStatus, setOcrStatus] = useState('');
   const fileInputRef = useRef(null);
 
+  // 🌟 優化：單張掃描精簡 Prompt 與開啟 json 模式
   const handleOcr = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -515,8 +545,19 @@ function ContactModal({ contact, onClose, onSave, setDbError, user, appId, stora
     try {
       const base64Data = await compressImage(file);
       setOcrStatus('AI 正在讀取資訊...');
-      const prompt = `請辨識這張名片，提取資訊。回傳 JSON：{name, company, title, phone, mobile, address, email, company2, title2, phone2, mobile2, address2, email2, fullText}。請務必在 fullText 欄位中記錄名片上所有的文字內容。`;
-      const result = await callGeminiWithRetry({ contents: [{ parts: [{ text: prompt }, { inlineData: { mimeType: "image/jpeg", data: base64Data } }] }] });
+      
+      // 精簡英文 Prompt (加入 fullText 並要求保留換行)
+      const prompt = `Extract business card info into JSON with exact keys: name, company, title, phone, mobile, address, email, company2, title2, phone2, mobile2, address2, email2, fullText. For fullText, capture all raw text exactly as printed, preserving original layout and newlines using '\\n'. Return empty string "" for missing fields. Do not include markdown.`;
+      
+      const payload = { 
+        contents: [{ parts: [{ text: prompt }, { inlineData: { mimeType: "image/jpeg", data: base64Data } }] }],
+        // 強制 JSON 模式
+        generationConfig: {
+          responseMimeType: "application/json",
+        }
+      };
+      
+      const result = await callGeminiWithRetry(payload);
       const data = JSON.parse(cleanJsonResponse(result.candidates[0].content.parts[0].text));
       
       let uploadedPhotoUrl = formData.photoUrl;
@@ -524,7 +565,6 @@ function ContactModal({ contact, onClose, onSave, setDbError, user, appId, stora
         setOcrStatus('正在存檔圖片 (超時將自動略過)...');
         try {
           const imageRef = ref(storage, `artifacts/${appId}/users/${user.uid}/images/${Date.now()}.jpg`);
-          // 【超時防護機制】最多等 5 秒，如果 Storage 卡住就直接觸發 catch 跳出，不影響後續流程
           await Promise.race([
             uploadString(imageRef, base64Data, 'base64'),
             new Promise((_, reject) => setTimeout(() => reject(new Error('儲存圖片超時，跳過存檔程序')), 5000))
@@ -532,7 +572,6 @@ function ContactModal({ contact, onClose, onSave, setDbError, user, appId, stora
           uploadedPhotoUrl = await getDownloadURL(imageRef);
         } catch (storageErr) {
           console.warn('圖片上傳失敗或超時，已保留文字並略過圖片:', storageErr.message);
-          // 若圖片上傳失敗，也不要阻擋 AI 辨識出的文字填入
         }
       }
       setFormData(prev => ({ ...prev, ...data, photoUrl: uploadedPhotoUrl }));
@@ -569,79 +608,76 @@ function ContactModal({ contact, onClose, onSave, setDbError, user, appId, stora
           
           <form id="contactForm" onSubmit={(e) => { e.preventDefault(); onSave(formData); }} className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* 基本資訊 */}
               <div className="col-span-2 flex items-center gap-2 text-blue-600 font-bold border-b pb-1 text-sm"><Users className="w-4 h-4"/>基本資料</div>
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">姓名 *</label>
-                <input required value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full px-4 py-2 bg-gray-100 border border-transparent rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none" placeholder="姓名" />
+                <input required value={formData.name || ''} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full px-4 py-2 bg-gray-100 border border-transparent rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none" placeholder="姓名" />
               </div>
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">公司 *</label>
-                <input required value={formData.company} onChange={e => setFormData({...formData, company: e.target.value})} className="w-full px-4 py-2 bg-gray-100 border border-transparent rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none" placeholder="公司名稱" />
+                <input required value={formData.company || ''} onChange={e => setFormData({...formData, company: e.target.value})} className="w-full px-4 py-2 bg-gray-100 border border-transparent rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none" placeholder="公司名稱" />
               </div>
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">職稱</label>
-                <input value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} className="w-full px-4 py-2 bg-gray-100 border border-transparent rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none" placeholder="職稱" />
+                <input value={formData.title || ''} onChange={e => setFormData({...formData, title: e.target.value})} className="w-full px-4 py-2 bg-gray-100 border border-transparent rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none" placeholder="職稱" />
               </div>
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">電話</label>
-                <input value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} className="w-full px-4 py-2 bg-gray-100 border border-transparent rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none" placeholder="公司電話" />
+                <input value={formData.phone || ''} onChange={e => setFormData({...formData, phone: e.target.value})} className="w-full px-4 py-2 bg-gray-100 border border-transparent rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none" placeholder="公司電話" />
               </div>
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">手機</label>
-                <input value={formData.mobile} onChange={e => setFormData({...formData, mobile: e.target.value})} className="w-full px-4 py-2 bg-gray-100 border border-transparent rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none" placeholder="個人手機" />
+                <input value={formData.mobile || ''} onChange={e => setFormData({...formData, mobile: e.target.value})} className="w-full px-4 py-2 bg-gray-100 border border-transparent rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none" placeholder="個人手機" />
               </div>
               <div className="col-span-2 space-y-1">
                 <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">公司地址</label>
-                <input value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} className="w-full px-4 py-2 bg-gray-100 border border-transparent rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none" placeholder="詳細地址" />
+                <input value={formData.address || ''} onChange={e => setFormData({...formData, address: e.target.value})} className="w-full px-4 py-2 bg-gray-100 border border-transparent rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none" placeholder="詳細地址" />
               </div>
               <div className="col-span-2 space-y-1">
                 <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">電子信箱</label>
-                <input type="email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} className="w-full px-4 py-2 bg-gray-100 border border-transparent rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none" placeholder="電子信箱" />
+                <input type="email" value={formData.email || ''} onChange={e => setFormData({...formData, email: e.target.value})} className="w-full px-4 py-2 bg-gray-100 border border-transparent rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none" placeholder="電子信箱" />
               </div>
 
-              {/* 第二公司/兼職資訊 */}
               <div className="col-span-2 flex items-center gap-2 text-emerald-600 font-bold border-b pb-1 mt-4 text-sm"><Briefcase className="w-4 h-4"/>公司 2</div>
               <div className="col-span-2 space-y-1">
                 <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">公司 2 名稱</label>
-                <input value={formData.company2} onChange={e => setFormData({...formData, company2: e.target.value})} className="w-full px-4 py-2 bg-gray-100 border border-transparent rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 outline-none" placeholder="第二間公司名稱" />
+                <input value={formData.company2 || ''} onChange={e => setFormData({...formData, company2: e.target.value})} className="w-full px-4 py-2 bg-gray-100 border border-transparent rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 outline-none" placeholder="第二間公司名稱" />
               </div>
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">職稱 2</label>
-                <input value={formData.title2} onChange={e => setFormData({...formData, title2: e.target.value})} className="w-full px-4 py-2 bg-gray-100 border border-transparent rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 outline-none" placeholder="第二公司職稱" />
+                <input value={formData.title2 || ''} onChange={e => setFormData({...formData, title2: e.target.value})} className="w-full px-4 py-2 bg-gray-100 border border-transparent rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 outline-none" placeholder="第二公司職稱" />
               </div>
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">電話 2</label>
-                <input value={formData.phone2} onChange={e => setFormData({...formData, phone2: e.target.value})} className="w-full px-4 py-2 bg-gray-100 border border-transparent rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 outline-none" placeholder="第二公司電話" />
+                <input value={formData.phone2 || ''} onChange={e => setFormData({...formData, phone2: e.target.value})} className="w-full px-4 py-2 bg-gray-100 border border-transparent rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 outline-none" placeholder="第二公司電話" />
               </div>
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">手機 2</label>
-                <input value={formData.mobile2} onChange={e => setFormData({...formData, mobile2: e.target.value})} className="w-full px-4 py-2 bg-gray-100 border border-transparent rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 outline-none" placeholder="第二公司手機" />
+                <input value={formData.mobile2 || ''} onChange={e => setFormData({...formData, mobile2: e.target.value})} className="w-full px-4 py-2 bg-gray-100 border border-transparent rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 outline-none" placeholder="第二公司手機" />
               </div>
               <div className="col-span-2 space-y-1">
                 <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">地址 2</label>
-                <input value={formData.address2} onChange={e => setFormData({...formData, address2: e.target.value})} className="w-full px-4 py-2 bg-gray-100 border border-transparent rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 outline-none" placeholder="第二公司地址" />
+                <input value={formData.address2 || ''} onChange={e => setFormData({...formData, address2: e.target.value})} className="w-full px-4 py-2 bg-gray-100 border border-transparent rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 outline-none" placeholder="第二公司地址" />
               </div>
               <div className="col-span-2 space-y-1">
                 <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">電子信箱 2</label>
-                <input type="email" value={formData.email2} onChange={e => setFormData({...formData, email2: e.target.value})} className="w-full px-4 py-2 bg-gray-100 border border-transparent rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 outline-none" placeholder="第二公司電子信箱" />
+                <input type="email" value={formData.email2 || ''} onChange={e => setFormData({...formData, email2: e.target.value})} className="w-full px-4 py-2 bg-gray-100 border border-transparent rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 outline-none" placeholder="第二公司電子信箱" />
               </div>
 
-              {/* 辨識詳情與備註 */}
-              <div className="col-span-2 flex items-center gap-2 text-gray-600 font-bold border-b pb-1 mt-4 text-sm"><FileText className="w-4 h-4"/>辨識詳情</div>
+              <div className="col-span-2 flex items-center gap-2 text-gray-600 font-bold border-b pb-1 mt-4 text-sm"><FileText className="w-4 h-4"/>分類與備註</div>
               <div className="col-span-2 space-y-1">
                 <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">名片全文字</label>
-                <textarea rows="4" value={formData.fullText} onChange={e => setFormData({...formData, fullText: e.target.value})} className="w-full px-4 py-2 bg-yellow-50 border border-transparent rounded-xl focus:bg-white focus:ring-2 focus:ring-yellow-400 outline-none resize-none text-xs" placeholder="AI 辨識出的名片原始完整文字..." />
+                <textarea rows="5" value={formData.fullText || ''} onChange={e => setFormData({...formData, fullText: e.target.value})} className="w-full px-4 py-2 bg-yellow-50 border border-transparent rounded-xl focus:bg-white focus:ring-2 focus:ring-yellow-400 outline-none resize-none text-xs whitespace-pre-wrap" placeholder="AI 辨識出的名片原始完整文字..." />
               </div>
               <div className="col-span-2 space-y-1">
                 <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">產業分類</label>
-                <select value={formData.industry} onChange={e => setFormData({...formData, industry: e.target.value})} className="w-full px-4 py-2 bg-gray-100 border border-transparent rounded-xl bg-white outline-none">
+                <select value={formData.industry || '其它'} onChange={e => setFormData({...formData, industry: e.target.value})} className="w-full px-4 py-2 bg-gray-100 border border-transparent rounded-xl bg-white outline-none">
                   {INDUSTRIES.filter(i => i !== '全部').map(ind => <option key={ind} value={ind}>{ind}</option>)}
                 </select>
               </div>
               <div className="col-span-2 space-y-1">
                 <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">備註</label>
-                <textarea rows="3" value={formData.note} onChange={e => setFormData({...formData, note: e.target.value})} className="w-full px-4 py-2 bg-gray-100 border border-transparent rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none resize-none" placeholder="補充資訊..." />
+                <textarea rows="3" value={formData.note || ''} onChange={e => setFormData({...formData, note: e.target.value})} className="w-full px-4 py-2 bg-gray-100 border border-transparent rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none resize-none" placeholder="補充資訊..." />
               </div>
             </div>
           </form>
