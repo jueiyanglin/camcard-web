@@ -205,6 +205,7 @@ export default function App() {
   const [selectedIndustry, setSelectedIndustry] = useState('全部');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingContact, setEditingContact] = useState(null);
+  const [viewingContact, setViewingContact] = useState(null); // 新增：檢視名片狀態
   const [isBatchScanning, setIsBatchScanning] = useState(false);
   const [isBatchModalOpen, setIsBatchModalOpen] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -541,7 +542,7 @@ export default function App() {
         <div className="flex-1 overflow-y-auto p-6 bg-gray-50/50">
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
             {filteredContacts.map(contact => (
-              <div key={contact.id} className="group relative bg-white rounded-2xl p-4 shadow-sm border border-gray-100 hover:shadow-lg transition-all transform hover:-translate-y-1">
+              <div key={contact.id} onClick={() => setViewingContact(contact)} className="cursor-pointer group relative bg-white rounded-2xl p-4 shadow-sm border border-gray-100 hover:shadow-lg transition-all transform hover:-translate-y-1">
                 <div className={`rounded-xl bg-gradient-to-br ${INDUSTRY_COLORS[contact.industry] || 'from-gray-700 to-gray-900'} p-5 text-white h-44 flex flex-col justify-between mb-4 shadow-sm relative overflow-hidden`}>
                   <div className="absolute -right-4 -bottom-4 opacity-10"><Building2 className="w-24 h-24" /></div>
                   <div className="z-10">
@@ -554,13 +555,14 @@ export default function App() {
                   </div>
                 </div>
                 <div className="space-y-2 text-[11px] text-gray-500 font-medium px-1">
-                  <div className="flex items-center gap-2 truncate"><Phone className="w-3.5 h-3.5 text-blue-500" />{contact.phone || contact.mobile || '無號碼'}</div>
-                  <div className="flex items-center gap-2 truncate"><Mail className="w-3.5 h-3.5 text-blue-500" />{contact.email || '無電子信箱'}</div>
-                  <div className="flex items-start gap-2"><MapPin className="w-3.5 h-3.5 text-blue-500 shrink-0 mt-0.5" /><span className="line-clamp-1">{contact.address || '無地址資訊'}</span></div>
+                  <div className="flex items-center gap-2"><Phone className="w-3.5 h-3.5 text-blue-500 shrink-0" /><span className="truncate">{contact.phone || contact.mobile || '無號碼'}</span></div>
+                  <div className="flex items-center gap-2"><Mail className="w-3.5 h-3.5 text-blue-500 shrink-0" /><span className="truncate">{contact.email || '無電子信箱'}</span></div>
+                  <div className="flex items-start gap-2"><MapPin className="w-3.5 h-3.5 text-blue-500 shrink-0 mt-0.5" /><span className="line-clamp-1 break-words">{contact.address || '無地址資訊'}</span></div>
                 </div>
-                <div className="absolute top-6 right-6 opacity-0 group-hover:opacity-100 transition-opacity flex gap-2">
-                  <button onClick={() => { setEditingContact(contact); setIsModalOpen(true); }} className="bg-white/90 text-blue-600 p-2 rounded-full shadow-md hover:bg-white"><Edit2 className="w-3.5 h-3.5" /></button>
-                  <button onClick={() => handleDelete(contact.id)} className="bg-white/90 text-red-600 p-2 rounded-full shadow-md hover:bg-white"><Trash2 className="w-3.5 h-3.5" /></button>
+                {/* 修正：在手機版永遠顯示編輯與刪除按鈕，電腦版則是 hover 顯示 */}
+                <div className="absolute top-6 right-6 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity flex gap-2">
+                  <button onClick={(e) => { e.stopPropagation(); setEditingContact(contact); setIsModalOpen(true); }} className="bg-white/90 text-blue-600 p-2 rounded-full shadow-md hover:bg-white"><Edit2 className="w-3.5 h-3.5" /></button>
+                  <button onClick={(e) => { e.stopPropagation(); handleDelete(contact.id); }} className="bg-white/90 text-red-600 p-2 rounded-full shadow-md hover:bg-white"><Trash2 className="w-3.5 h-3.5" /></button>
                 </div>
               </div>
             ))}
@@ -575,6 +577,7 @@ export default function App() {
       </main>
 
       {isModalOpen && <ContactModal contact={editingContact} onClose={() => { setIsModalOpen(false); setEditingContact(null); }} onSave={handleSaveContact} setDbError={setDbError} user={user} appId={appId} storage={storage} />}
+      {viewingContact && <ViewContactModal contact={viewingContact} onClose={() => setViewingContact(null)} onEdit={(c) => { setViewingContact(null); setEditingContact(c); setIsModalOpen(true); }} />}
       {isBatchModalOpen && <BatchScanModal onClose={() => setIsBatchModalOpen(false)} onScan={handleBatchScan} isScanning={isBatchScanning} />}
     </div>
   );
@@ -745,28 +748,61 @@ function ContactModal({ contact, onClose, onSave, setDbError, user, appId, stora
   );
 }
 
-function BatchScanModal({ onClose, onScan, isScanning }) {
-  const [ind, setInd] = useState('自動判定');
-  const fileInput = useRef(null);
+// 新增：名片唯讀詳情 Modal (解決手機版左側欄位縮小問題)
+function ViewContactModal({ contact, onClose, onEdit }) {
+  if (!contact) return null;
+
+  // 核心修正：使用 flex-shrink-0 鎖定左邊欄寬度，右側 break-words 自動換行
+  const DetailRow = ({ icon: Icon, label, value }) => (
+    <div className="flex items-start py-3 border-b border-gray-100 last:border-0">
+      <div className="flex items-center gap-2 w-24 flex-shrink-0 pt-0.5">
+        <Icon className="w-4 h-4 text-gray-500" />
+        <span className="text-sm text-gray-600 font-bold">{label}</span>
+      </div>
+      <div className="flex-1 text-sm text-gray-900 break-words font-medium leading-relaxed">
+        {value || '-'}
+      </div>
+    </div>
+  );
+
   return (
-    <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-8 animate-in zoom-in-95">
-        <div className="flex justify-between items-center mb-6">
-          <h3 className="font-bold text-xl text-gray-800">批次名片掃描</h3>
+    <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-[400]" onClick={onClose}>
+      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-hidden flex flex-col animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
+        <div className="px-6 py-4 border-b flex justify-between items-center bg-gray-50/50">
+          <h3 className="font-bold text-gray-800">名片詳情</h3>
           <button onClick={onClose} className="p-1 hover:bg-gray-200 rounded-lg"><X className="w-5 h-5 text-gray-400" /></button>
         </div>
-        <div className="space-y-6">
-          <select value={ind} onChange={e => setInd(e.target.value)} className="w-full px-4 py-3 border rounded-xl bg-gray-50 outline-none">
-            <option value="自動判定">🤖 AI 自動判定分類</option>
-            {INDUSTRIES.filter(i => i !== '全部').map(i => <option key={i} value={i}>{i}</option>)}
-          </select>
-          <input type="file" ref={fileInput} onChange={e => onScan(e.target.files[0], ind)} className="hidden" />
-          <button onClick={() => fileInput.current.click()} disabled={isScanning} className="w-full py-16 border-2 border-dashed rounded-3xl flex flex-col items-center justify-center bg-gray-50 hover:bg-emerald-50 transition-all">
-            {isScanning ? (
-              <><Loader2 className="w-10 h-10 animate-spin text-emerald-600 mb-2" /><p className="text-emerald-600 font-bold">AI 批次辨識中...</p></>
-            ) : (
-              <><Layers className="w-10 h-10 text-emerald-400 mb-2" /><p className="text-gray-600 font-bold">選取含多張名片之照片</p></>
-            )}
+        <div className="p-6 overflow-y-auto space-y-1">
+          <DetailRow icon={Users} label="姓名" value={contact.name} />
+          <DetailRow icon={Building2} label="公司" value={contact.company} />
+          <DetailRow icon={Briefcase} label="職稱" value={contact.title} />
+          <DetailRow icon={Phone} label="電話" value={contact.phone} />
+          <DetailRow icon={Smartphone} label="手機" value={contact.mobile} />
+          <DetailRow icon={Mail} label="信箱" value={contact.email} />
+          <DetailRow icon={MapPin} label="地址" value={contact.address} />
+
+          {contact.company2 && (
+            <div className="pt-4">
+              <div className="flex items-center gap-2 text-emerald-600 font-bold border-b pb-2 mb-2 text-sm">
+                <Building2 className="w-4 h-4"/> 第二公司資訊
+              </div>
+              <DetailRow icon={Building2} label="公司 2" value={contact.company2} />
+              <DetailRow icon={Briefcase} label="職稱 2" value={contact.title2} />
+              <DetailRow icon={Phone} label="電話 2" value={contact.phone2} />
+              <DetailRow icon={Smartphone} label="手機 2" value={contact.mobile2} />
+              <DetailRow icon={Mail} label="信箱 2" value={contact.email2} />
+              <DetailRow icon={MapPin} label="地址 2" value={contact.address2} />
+            </div>
+          )}
+
+          <div className="pt-4">
+            <DetailRow icon={Layers} label="產業分類" value={contact.industry} />
+            <DetailRow icon={FileText} label="備註" value={contact.note} />
+          </div>
+        </div>
+        <div className="p-4 bg-gray-50 border-t flex justify-end gap-3 shadow-inner">
+          <button onClick={() => onEdit(contact)} className="px-8 py-2 bg-blue-600 text-white rounded-xl text-sm font-bold shadow-md hover:bg-blue-700 active:scale-95 transition-all">
+            編輯名片
           </button>
         </div>
       </div>
