@@ -642,6 +642,29 @@ function ContactModal({ contact, onClose, onSave, setDbError, user, appId, stora
     }
   };
 
+  // 核心修正：將編輯表單也改為與詳情頁相同的 Flex Row 排版，確保左側標籤不會被擠壓且太長可換行
+  const EditField = ({ icon: Icon, label, value, onChange, placeholder, required, type = "text", isTextArea = false }) => (
+    <div className="flex items-start py-2 border-b border-gray-50 last:border-0">
+      <div className="flex items-start gap-2 w-28 flex-shrink-0 pt-2">
+        {Icon && <Icon className="w-4 h-4 text-gray-500 shrink-0 mt-0.5" />}
+        <label className="text-sm font-bold text-gray-600 break-words whitespace-normal leading-tight">{label}</label>
+      </div>
+      <div className="flex-1 w-full min-w-0 ml-2">
+        {isTextArea ? (
+          <textarea 
+            required={required} value={value} onChange={onChange} placeholder={placeholder} 
+            className="w-full px-3 py-2 bg-gray-100 border border-transparent rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none resize-y min-h-[60px] text-sm break-words whitespace-pre-wrap"
+          />
+        ) : (
+          <input 
+            type={type} required={required} value={value} onChange={onChange} placeholder={placeholder} 
+            className="w-full px-3 py-2 bg-gray-100 border border-transparent rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+          />
+        )}
+      </div>
+    </div>
+  );
+
   return (
     <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
       <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col animate-in zoom-in-95">
@@ -649,7 +672,7 @@ function ContactModal({ contact, onClose, onSave, setDbError, user, appId, stora
           <h3 className="font-bold text-gray-800">{contact ? '編輯名片' : '新增名片'}</h3>
           <button onClick={onClose} className="p-1 hover:bg-gray-200 rounded-lg"><X className="w-5 h-5 text-gray-400" /></button>
         </div>
-        <div className="p-6 overflow-y-auto space-y-8">
+        <div className="p-6 overflow-y-auto space-y-6">
           {!contact && (
             <div className="space-y-2">
               <input type="file" accept="image/*" ref={fileInputRef} onChange={handleOcr} className="hidden" />
@@ -663,80 +686,40 @@ function ContactModal({ contact, onClose, onSave, setDbError, user, appId, stora
             </div>
           )}
           
-          <form id="contactForm" onSubmit={(e) => { e.preventDefault(); onSave(formData); }} className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="col-span-2 flex items-center gap-2 text-blue-600 font-bold border-b pb-1 text-sm"><Users className="w-4 h-4"/>基本資料</div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">姓名 *</label>
-                <input required value={formData.name || ''} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full px-4 py-2 bg-gray-100 border border-transparent rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none" placeholder="姓名" />
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">公司 *</label>
-                <input required value={formData.company || ''} onChange={e => setFormData({...formData, company: e.target.value})} className="w-full px-4 py-2 bg-gray-100 border border-transparent rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none" placeholder="公司名稱" />
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">職稱</label>
-                <input value={formData.title || ''} onChange={e => setFormData({...formData, title: e.target.value})} className="w-full px-4 py-2 bg-gray-100 border border-transparent rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none" placeholder="職稱" />
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">電話</label>
-                <input value={formData.phone || ''} onChange={e => setFormData({...formData, phone: e.target.value})} className="w-full px-4 py-2 bg-gray-100 border border-transparent rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none" placeholder="公司電話" />
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">手機</label>
-                <input value={formData.mobile || ''} onChange={e => setFormData({...formData, mobile: e.target.value})} className="w-full px-4 py-2 bg-gray-100 border border-transparent rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none" placeholder="個人手機" />
-              </div>
-              <div className="col-span-2 space-y-1">
-                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">公司地址</label>
-                <input value={formData.address || ''} onChange={e => setFormData({...formData, address: e.target.value})} className="w-full px-4 py-2 bg-gray-100 border border-transparent rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none" placeholder="詳細地址" />
-              </div>
-              <div className="col-span-2 space-y-1">
-                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">電子信箱</label>
-                <input type="email" value={formData.email || ''} onChange={e => setFormData({...formData, email: e.target.value})} className="w-full px-4 py-2 bg-gray-100 border border-transparent rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none" placeholder="電子信箱" />
-              </div>
+          <form id="contactForm" onSubmit={(e) => { e.preventDefault(); onSave(formData); }} className="space-y-1">
+            <div className="flex items-center gap-2 text-blue-600 font-bold border-b pb-2 mb-2 text-sm"><Users className="w-4 h-4"/>基本資料</div>
+            <EditField icon={Users} label="姓名 *" required value={formData.name || ''} onChange={e => setFormData({...formData, name: e.target.value})} placeholder="姓名" />
+            <EditField icon={Building2} label="公司 *" required value={formData.company || ''} onChange={e => setFormData({...formData, company: e.target.value})} placeholder="公司名稱" />
+            <EditField icon={Briefcase} label="職稱" value={formData.title || ''} onChange={e => setFormData({...formData, title: e.target.value})} placeholder="職稱" />
+            <EditField icon={Phone} label="電話" value={formData.phone || ''} onChange={e => setFormData({...formData, phone: e.target.value})} placeholder="公司電話" />
+            <EditField icon={Smartphone} label="手機" value={formData.mobile || ''} onChange={e => setFormData({...formData, mobile: e.target.value})} placeholder="個人手機" />
+            <EditField icon={MapPin} label="公司地址" value={formData.address || ''} onChange={e => setFormData({...formData, address: e.target.value})} placeholder="詳細地址" isTextArea />
+            <EditField icon={Mail} label="電子信箱" type="email" value={formData.email || ''} onChange={e => setFormData({...formData, email: e.target.value})} placeholder="電子信箱" />
 
-              <div className="col-span-2 flex items-center gap-2 text-emerald-600 font-bold border-b pb-1 mt-4 text-sm"><Briefcase className="w-4 h-4"/>公司 2</div>
-              <div className="col-span-2 space-y-1">
-                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">公司 2 名稱</label>
-                <input value={formData.company2 || ''} onChange={e => setFormData({...formData, company2: e.target.value})} className="w-full px-4 py-2 bg-gray-100 border border-transparent rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 outline-none" placeholder="第二間公司名稱" />
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">職稱 2</label>
-                <input value={formData.title2 || ''} onChange={e => setFormData({...formData, title2: e.target.value})} className="w-full px-4 py-2 bg-gray-100 border border-transparent rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 outline-none" placeholder="第二公司職稱" />
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">電話 2</label>
-                <input value={formData.phone2 || ''} onChange={e => setFormData({...formData, phone2: e.target.value})} className="w-full px-4 py-2 bg-gray-100 border border-transparent rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 outline-none" placeholder="第二公司電話" />
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">手機 2</label>
-                <input value={formData.mobile2 || ''} onChange={e => setFormData({...formData, mobile2: e.target.value})} className="w-full px-4 py-2 bg-gray-100 border border-transparent rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 outline-none" placeholder="第二公司手機" />
-              </div>
-              <div className="col-span-2 space-y-1">
-                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">地址 2</label>
-                <input value={formData.address2 || ''} onChange={e => setFormData({...formData, address2: e.target.value})} className="w-full px-4 py-2 bg-gray-100 border border-transparent rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 outline-none" placeholder="第二公司地址" />
-              </div>
-              <div className="col-span-2 space-y-1">
-                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">電子信箱 2</label>
-                <input type="email" value={formData.email2 || ''} onChange={e => setFormData({...formData, email2: e.target.value})} className="w-full px-4 py-2 bg-gray-100 border border-transparent rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 outline-none" placeholder="第二公司電子信箱" />
-              </div>
+            <div className="flex items-center gap-2 text-emerald-600 font-bold border-b pb-2 mt-6 mb-2 text-sm"><Briefcase className="w-4 h-4"/>公司 2</div>
+            <EditField icon={Building2} label="公司 2 名稱" value={formData.company2 || ''} onChange={e => setFormData({...formData, company2: e.target.value})} placeholder="第二間公司名稱" />
+            <EditField icon={Briefcase} label="職稱 2" value={formData.title2 || ''} onChange={e => setFormData({...formData, title2: e.target.value})} placeholder="第二公司職稱" />
+            <EditField icon={Phone} label="電話 2" value={formData.phone2 || ''} onChange={e => setFormData({...formData, phone2: e.target.value})} placeholder="第二公司電話" />
+            <EditField icon={Smartphone} label="手機 2" value={formData.mobile2 || ''} onChange={e => setFormData({...formData, mobile2: e.target.value})} placeholder="第二公司手機" />
+            <EditField icon={MapPin} label="地址 2" value={formData.address2 || ''} onChange={e => setFormData({...formData, address2: e.target.value})} placeholder="第二公司地址" isTextArea />
+            <EditField icon={Mail} label="信箱 2" type="email" value={formData.email2 || ''} onChange={e => setFormData({...formData, email2: e.target.value})} placeholder="第二公司電子信箱" />
 
-              <div className="col-span-2 flex items-center gap-2 text-gray-600 font-bold border-b pb-1 mt-4 text-sm"><FileText className="w-4 h-4"/>分類與備註</div>
-              <div className="col-span-2 space-y-1">
-                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">名片全文字</label>
-                <textarea rows="5" value={formData.fullText || ''} onChange={e => setFormData({...formData, fullText: e.target.value})} className="w-full px-4 py-2 bg-yellow-50 border border-transparent rounded-xl focus:bg-white focus:ring-2 focus:ring-yellow-400 outline-none resize-none text-xs whitespace-pre-wrap" placeholder="AI 辨識出的名片原始完整文字..." />
+            <div className="flex items-center gap-2 text-gray-600 font-bold border-b pb-2 mt-6 mb-2 text-sm"><FileText className="w-4 h-4"/>分類與備註</div>
+            
+            <div className="flex items-start py-2 border-b border-gray-50">
+              <div className="flex items-start gap-2 w-28 flex-shrink-0 pt-2">
+                <Layers className="w-4 h-4 text-gray-500 shrink-0 mt-0.5" />
+                <label className="text-sm font-bold text-gray-600 break-words whitespace-normal leading-tight">產業分類</label>
               </div>
-              <div className="col-span-2 space-y-1">
-                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">產業分類</label>
-                <select value={formData.industry || '其它'} onChange={e => setFormData({...formData, industry: e.target.value})} className="w-full px-4 py-2 bg-gray-100 border border-transparent rounded-xl bg-white outline-none">
+              <div className="flex-1 w-full min-w-0 ml-2">
+                <select value={formData.industry || '其它'} onChange={e => setFormData({...formData, industry: e.target.value})} className="w-full px-3 py-2 bg-gray-100 border border-transparent rounded-xl outline-none text-sm focus:ring-2 focus:ring-blue-500">
                   {INDUSTRIES.filter(i => i !== '全部').map(ind => <option key={ind} value={ind}>{ind}</option>)}
                 </select>
               </div>
-              <div className="col-span-2 space-y-1">
-                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">備註</label>
-                <textarea rows="3" value={formData.note || ''} onChange={e => setFormData({...formData, note: e.target.value})} className="w-full px-4 py-2 bg-gray-100 border border-transparent rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none resize-none" placeholder="補充資訊..." />
-              </div>
             </div>
+
+            <EditField icon={FileText} label="備註" value={formData.note || ''} onChange={e => setFormData({...formData, note: e.target.value})} placeholder="補充資訊..." isTextArea />
+            <EditField icon={Database} label="名片全文字" value={formData.fullText || ''} onChange={e => setFormData({...formData, fullText: e.target.value})} placeholder="AI 辨識出的名片原始完整文字..." isTextArea />
           </form>
         </div>
         <div className="p-4 bg-gray-50 border-t flex justify-end gap-3 shadow-inner">
@@ -752,14 +735,14 @@ function ContactModal({ contact, onClose, onSave, setDbError, user, appId, stora
 function ViewContactModal({ contact, onClose, onEdit }) {
   if (!contact) return null;
 
-  // 核心修正：使用 flex-shrink-0 鎖定左邊欄寬度，右側 break-words 自動換行
-  const DetailRow = ({ icon: Icon, label, value }) => (
+  // 核心修正：使用 flex-shrink-0 鎖定左邊欄寬度，加入 break-words 和 whitespace-normal 讓過長標籤自動換行
+  const DetailRow = ({ icon: Icon, label, value, isPreWrap }) => (
     <div className="flex items-start py-3 border-b border-gray-100 last:border-0">
-      <div className="flex items-center gap-2 w-24 flex-shrink-0 pt-0.5">
-        <Icon className="w-4 h-4 text-gray-500" />
-        <span className="text-sm text-gray-600 font-bold">{label}</span>
+      <div className="flex items-start gap-2 w-28 flex-shrink-0 pt-0.5">
+        {Icon && <Icon className="w-4 h-4 text-gray-500 shrink-0 mt-0.5" />}
+        <span className="text-sm text-gray-600 font-bold break-words whitespace-normal leading-tight">{label}</span>
       </div>
-      <div className="flex-1 text-sm text-gray-900 break-words font-medium leading-relaxed">
+      <div className={`flex-1 text-sm text-gray-900 break-words font-medium leading-relaxed ${isPreWrap ? 'whitespace-pre-wrap' : ''}`}>
         {value || '-'}
       </div>
     </div>
@@ -773,6 +756,9 @@ function ViewContactModal({ contact, onClose, onEdit }) {
           <button onClick={onClose} className="p-1 hover:bg-gray-200 rounded-lg"><X className="w-5 h-5 text-gray-400" /></button>
         </div>
         <div className="p-6 overflow-y-auto space-y-1">
+          <div className="flex items-center gap-2 text-blue-600 font-bold border-b pb-2 mb-2 text-sm">
+            <Users className="w-4 h-4"/> 基本資料
+          </div>
           <DetailRow icon={Users} label="姓名" value={contact.name} />
           <DetailRow icon={Building2} label="公司" value={contact.company} />
           <DetailRow icon={Briefcase} label="職稱" value={contact.title} />
@@ -781,23 +767,25 @@ function ViewContactModal({ contact, onClose, onEdit }) {
           <DetailRow icon={Mail} label="信箱" value={contact.email} />
           <DetailRow icon={MapPin} label="地址" value={contact.address} />
 
-          {contact.company2 && (
-            <div className="pt-4">
-              <div className="flex items-center gap-2 text-emerald-600 font-bold border-b pb-2 mb-2 text-sm">
-                <Building2 className="w-4 h-4"/> 第二公司資訊
-              </div>
-              <DetailRow icon={Building2} label="公司 2" value={contact.company2} />
-              <DetailRow icon={Briefcase} label="職稱 2" value={contact.title2} />
-              <DetailRow icon={Phone} label="電話 2" value={contact.phone2} />
-              <DetailRow icon={Smartphone} label="手機 2" value={contact.mobile2} />
-              <DetailRow icon={Mail} label="信箱 2" value={contact.email2} />
-              <DetailRow icon={MapPin} label="地址 2" value={contact.address2} />
+          <div className="pt-4">
+            <div className="flex items-center gap-2 text-emerald-600 font-bold border-b pb-2 mb-2 text-sm">
+              <Building2 className="w-4 h-4"/> 第二公司資訊
             </div>
-          )}
+            <DetailRow icon={Building2} label="公司 2 名稱" value={contact.company2} />
+            <DetailRow icon={Briefcase} label="職稱 2" value={contact.title2} />
+            <DetailRow icon={Phone} label="電話 2" value={contact.phone2} />
+            <DetailRow icon={Smartphone} label="手機 2" value={contact.mobile2} />
+            <DetailRow icon={Mail} label="信箱 2" value={contact.email2} />
+            <DetailRow icon={MapPin} label="地址 2" value={contact.address2} />
+          </div>
 
           <div className="pt-4">
+            <div className="flex items-center gap-2 text-gray-600 font-bold border-b pb-2 mb-2 text-sm">
+              <FileText className="w-4 h-4"/> 分類與備註
+            </div>
             <DetailRow icon={Layers} label="產業分類" value={contact.industry} />
-            <DetailRow icon={FileText} label="備註" value={contact.note} />
+            <DetailRow icon={FileText} label="備註" value={contact.note} isPreWrap />
+            <DetailRow icon={Database} label="名片全文字" value={contact.fullText} isPreWrap />
           </div>
         </div>
         <div className="p-4 bg-gray-50 border-t flex justify-end gap-3 shadow-inner">
