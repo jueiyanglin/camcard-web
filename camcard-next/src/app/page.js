@@ -583,6 +583,43 @@ export default function App() {
   );
 }
 
+//
+// 核心修正：將編輯表單也改為與詳情頁相同的 Flex Row 排版，確保左側標籤不會被擠壓且太長可換行
+  const EditField = ({ icon: Icon, label, value, onChange, placeholder, required, type = "text", isTextArea = false }) => (
+    <div className="flex items-start py-2 border-b border-gray-50 last:border-0">
+      <div className="flex items-start gap-2 w-28 flex-shrink-0 pt-2">
+        {Icon && <Icon className="w-4 h-4 text-gray-500 shrink-0 mt-0.5" />}
+        <label className="text-sm font-bold text-gray-600 break-words whitespace-normal leading-tight">{label}</label>
+      </div>
+      <div className="flex-1 w-full min-w-0 ml-2">
+        {isTextArea ? (
+          <textarea 
+            required={required} value={value} onChange={onChange} placeholder={placeholder} 
+            className="w-full px-3 py-2 bg-gray-100 border border-transparent rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none resize-y min-h-[60px] text-sm break-words whitespace-pre-wrap"
+          />
+        ) : (
+          <input 
+            type={type} required={required} value={value} onChange={onChange} placeholder={placeholder} 
+            className="w-full px-3 py-2 bg-gray-100 border border-transparent rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+          />
+        )}
+      </div>
+    </div>
+  );
+
+  // 核心修正：使用 flex-shrink-0 鎖定左邊欄寬度，加入 break-words 和 whitespace-normal 讓過長標籤自動換行
+  const DetailRow = ({ icon: Icon, label, value, isPreWrap }) => (
+    <div className="flex items-start py-3 border-b border-gray-100 last:border-0">
+      <div className="flex items-start gap-2 w-28 flex-shrink-0 pt-0.5">
+        {Icon && <Icon className="w-4 h-4 text-gray-500 shrink-0 mt-0.5" />}
+        <span className="text-sm text-gray-600 font-bold break-words whitespace-normal leading-tight">{label}</span>
+      </div>
+      <div className={`flex-1 text-sm text-gray-900 break-words font-medium leading-relaxed ${isPreWrap ? 'whitespace-pre-wrap' : ''}`}>
+        {value || '-'}
+      </div>
+    </div>
+  );
+  
 function ContactModal({ contact, onClose, onSave, setDbError, user, appId, storage }) {
   const [formData, setFormData] = useState(contact || {
     name: '', company: '', title: '', phone: '', mobile: '', address: '', email: '',
@@ -642,28 +679,7 @@ function ContactModal({ contact, onClose, onSave, setDbError, user, appId, stora
     }
   };
 
-  // 核心修正：將編輯表單也改為與詳情頁相同的 Flex Row 排版，確保左側標籤不會被擠壓且太長可換行
-  const EditField = ({ icon: Icon, label, value, onChange, placeholder, required, type = "text", isTextArea = false }) => (
-    <div className="flex items-start py-2 border-b border-gray-50 last:border-0">
-      <div className="flex items-start gap-2 w-28 flex-shrink-0 pt-2">
-        {Icon && <Icon className="w-4 h-4 text-gray-500 shrink-0 mt-0.5" />}
-        <label className="text-sm font-bold text-gray-600 break-words whitespace-normal leading-tight">{label}</label>
-      </div>
-      <div className="flex-1 w-full min-w-0 ml-2">
-        {isTextArea ? (
-          <textarea 
-            required={required} value={value} onChange={onChange} placeholder={placeholder} 
-            className="w-full px-3 py-2 bg-gray-100 border border-transparent rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none resize-y min-h-[60px] text-sm break-words whitespace-pre-wrap"
-          />
-        ) : (
-          <input 
-            type={type} required={required} value={value} onChange={onChange} placeholder={placeholder} 
-            className="w-full px-3 py-2 bg-gray-100 border border-transparent rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none text-sm"
-          />
-        )}
-      </div>
-    </div>
-  );
+  //核心修正移動Const EditField 至最上方
 
   return (
     <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
@@ -735,18 +751,7 @@ function ContactModal({ contact, onClose, onSave, setDbError, user, appId, stora
 function ViewContactModal({ contact, onClose, onEdit }) {
   if (!contact) return null;
 
-  // 核心修正：使用 flex-shrink-0 鎖定左邊欄寬度，加入 break-words 和 whitespace-normal 讓過長標籤自動換行
-  const DetailRow = ({ icon: Icon, label, value, isPreWrap }) => (
-    <div className="flex items-start py-3 border-b border-gray-100 last:border-0">
-      <div className="flex items-start gap-2 w-28 flex-shrink-0 pt-0.5">
-        {Icon && <Icon className="w-4 h-4 text-gray-500 shrink-0 mt-0.5" />}
-        <span className="text-sm text-gray-600 font-bold break-words whitespace-normal leading-tight">{label}</span>
-      </div>
-      <div className={`flex-1 text-sm text-gray-900 break-words font-medium leading-relaxed ${isPreWrap ? 'whitespace-pre-wrap' : ''}`}>
-        {value || '-'}
-      </div>
-    </div>
-  );
+  //移到外層const DetailRow
 
   return (
     <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-[400]" onClick={onClose}>
